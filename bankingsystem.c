@@ -5,6 +5,7 @@
 #define True 1
 #define False 0
 #define CREDENTIALS_LENGTH 30
+#define MAX_ACCOUNT_ONE_USER_HOLD 3
 
 const char *ACCOUNT_FILE = "accounts.dat";
 const char *USER_FILE = "users.dat";
@@ -34,6 +35,8 @@ void deposit_handler();
 void change_password();
 void view_account_details();
 void fix_text_last(char *text);
+void How_many_account_user_holds(int *counter);
+FILE *safe_file_mode_for_rb(const char *filename, const char *mode);
 
 int main()
 {
@@ -94,10 +97,9 @@ void sign_handler()
 {
     if (!loggedin)
     {
-        FILE *user_file = fopen(USER_FILE, "rb");
+        FILE *user_file = safe_file_mode_for_rb(USER_FILE, "rb");
         if (user_file == NULL)
         {
-            perror("Failed to open user file!");
             return;
         }
 
@@ -109,9 +111,9 @@ void sign_handler()
 
         while (fread(&new_user, sizeof(User), 1, user_file))
         {
-            if (strcmp(new_user.username, username) == 0 && strcmp(new_user.password, password) == 0)
+            if (strcmp(new_user.username, username) == 0)
             {
-                printf("User already exists!");
+                printf("User already exists with this username!");
                 fclose(user_file);
                 return;
             }
@@ -136,19 +138,10 @@ void login_handler()
 {
     if (!loggedin)
     {
-        FILE *user_file = fopen(USER_FILE, "rb");
+        FILE *user_file = safe_file_mode_for_rb(USER_FILE, "rb");
         if (user_file == NULL)
         {
-            user_file = fopen(USER_FILE, "wb");
-            if (user_file == NULL)
-            {
-                perror("Failed to open user file!");
-                return;
-            }
-
-            fclose(user_file);
-
-            user_file = fopen(USER_FILE, "rb");
+            return;
         }
 
         char username[CREDENTIALS_LENGTH];
@@ -215,17 +208,16 @@ void open_account()
 {
     if (loggedin)
     {
-        FILE *account_file = fopen(ACCOUNT_FILE, "rb");
+        FILE *account_file = safe_file_mode_for_rb(ACCOUNT_FILE, "rb");
 
         if (account_file == NULL)
         {
-            perror("Failed to open account file!");
             return;
         }
 
         Account new_account;
 
-        int taccount_number;
+        int taccount_number, count = 0;
 
         strncpy(new_account.account_holder, current_user, sizeof(new_account.account_holder));
         printf("\nEnter account number: ");
@@ -242,7 +234,20 @@ void open_account()
         }
         fclose(account_file);
 
+        How_many_account_user_holds(&count);
+
+        if (count == MAX_ACCOUNT_ONE_USER_HOLD)
+        {
+            printf("Only three accounts allowed for a user! And you already owned 3 Accounts!");
+            return;
+        }
+
         account_file = fopen(ACCOUNT_FILE, "ab");
+        if (account_file == NULL)
+        {
+            perror("Failed to open account file!");
+            return;
+        }
 
         new_account.account_number = taccount_number;
         new_account.balance = 0.0; // Initial balance
@@ -260,19 +265,11 @@ void withdraw_handler()
 {
     if (loggedin)
     {
-        FILE *account_file = fopen(ACCOUNT_FILE, "r+b");
+        FILE *account_file = safe_file_mode_for_rb(ACCOUNT_FILE, "r+b");
 
         if (account_file == NULL)
         {
-            account_file = fopen(ACCOUNT_FILE, "wb");
-            if (account_file == NULL)
-            {
-                perror("Failed to open account file!");
-                return;
-            }
-            fclose(account_file);
-
-            account_file = fopen(ACCOUNT_FILE, "r+b");
+            return;
         }
 
         Account account;
@@ -317,19 +314,11 @@ void deposit_handler()
 {
     if (loggedin)
     {
-        FILE *account_file = fopen(ACCOUNT_FILE, "r+b");
+        FILE *account_file = safe_file_mode_for_rb(ACCOUNT_FILE, "r+b");
 
         if (account_file == NULL)
         {
-            account_file = fopen(ACCOUNT_FILE, "wb");
-            if (account_file == NULL)
-            {
-                perror("Failed to open account file!");
-                return;
-            }
-            fclose(account_file);
-
-            account_file = fopen(ACCOUNT_FILE, "r+b");
+            return;
         }
 
         Account account;
@@ -338,12 +327,25 @@ void deposit_handler()
 
         printf("\nEnter account number to deposit into: ");
         scanf("%d", &account_number);
+        if (account_number <= 0)
+        {
+            printf("Enter valid account number!");
+            fclose(account_file);
+            return;
+        }
         while (fread(&account, sizeof(Account), 1, account_file))
         {
             if (account.account_number == account_number && strcmp(account.account_holder, current_user) == 0)
             {
                 printf("Enter amount to deposit: ");
                 scanf("%f", &deposit_amount);
+                if (deposit_amount <= 0)
+                {
+                    printf("Please enter valid number!");
+                    fclose(account_file);
+                    return;
+                }
+
                 account.balance += deposit_amount;
                 printf("\nDeposit successful! New balance: %.2f\n", account.balance);
                 // Update the account file
@@ -367,21 +369,36 @@ void change_password()
 {
     if (loggedin)
     {
-        FILE *change_pass = fopen(USER_FILE, "r+b");
+        FILE *change_pass = safe_file_mode_for_rb(USER_FILE, "r+b");
 
         if (change_pass == NULL)
         {
-            perror("Failed to open account file!");
             return;
         }
 
         User user;
         char tpassword[50];
 
+        char old_password[CREDENTIALS_LENGTH];
+
+        printf("Enter old password first: ");
+
+        int c;
+        while ((c = getchar()) != '\n' && c != EOF); // flush stdin
+
+        fgets(old_password, CREDENTIALS_LENGTH, stdin);
+        fix_text_last(old_password);
+
         while (fread(&user, sizeof(User), 1, change_pass))
         {
             if (strcmp(user.username, current_user) == 0)
             {
+                if (strcmp(user.password, old_password) != 0)
+                {
+                    printf("Wrong Password!");
+                    fclose(change_pass);
+                    return;
+                }
                 input_handler(current_user, tpassword, "changepass");
                 fseek(change_pass, -sizeof(User), SEEK_CUR);
                 strncpy(user.password, tpassword, CREDENTIALS_LENGTH);
@@ -406,53 +423,29 @@ void view_account_details()
 {
     if (loggedin)
     {
-        FILE *account_file = fopen(ACCOUNT_FILE, "rb");
-        FILE *user_file = fopen(USER_FILE, "rb");
+        FILE *account_file = safe_file_mode_for_rb(ACCOUNT_FILE, "rb");
 
         if (account_file == NULL)
         {
-            account_file = fopen(ACCOUNT_FILE, "wb");
-            if (account_file == NULL)
-            {
-                perror("Failed to open account file!");
-                return;
-            }
-            fclose(account_file);
-        }
-
-        account_file = fopen(ACCOUNT_FILE, "rb");
-
-        if (user_file == NULL)
-        {
-            perror("Failed to open account file!");
             return;
         }
 
         Account account;
-        User check_user_p;
 
-        char old_password[CREDENTIALS_LENGTH];
-
-        fgets(old_password, CREDENTIALS_LENGTH, stdin);
-        fix_text_last(old_password);
-
-        while (fread(&check_user_p, sizeof(User), 1, account_file))
-        {
-            if(strcmp(check_user_p.password, old_password) != 0){
-                printf("Wrong Password!");
-                fclose(account_file);
-                fclose(user_file);
-                return;
-            }
-        }
+        int count1 = 0, count2 = 0;
+        How_many_account_user_holds(&count1);
 
         while (fread(&account, sizeof(Account), 1, account_file))
         {
             if (strcmp(account.account_holder, current_user) == 0)
             {
                 printf("\nAccount Holder name: %s\nAccount number %d\nAccount balance %.2f\n", account.account_holder, account.account_number, account.balance);
-                fclose(account_file);
-                return;
+                count2++;
+                if (count2 == count1)
+                {
+                    fclose(account_file);
+                    return;
+                }
             }
         }
         printf("\nYour account is not open yet! First open it!\n");
@@ -476,7 +469,58 @@ void fix_text_last(char *text)
     }
 }
 
+void How_many_account_user_holds(int *counter)
+{
+    FILE *account_file = safe_file_mode_for_rb(ACCOUNT_FILE, "rb");
 
+    if (account_file == NULL)
+    {
+        return;
+    }
+
+    Account account_check;
+    *counter = 0;
+
+    while (fread(&account_check, sizeof(Account), 1, account_file))
+    {
+        if (strcmp(account_check.account_holder, current_user) == 0)
+        {
+            (*counter)++;
+        }
+    }
+    fclose(account_file);
+}
+
+FILE *safe_file_mode_for_rb(const char *filename, const char *mode)
+{
+    if (strcmp(mode, "rb") == 0 || strcmp(mode, "r+b") == 0 || strcmp(mode, "rb+") == 0)
+    {
+        FILE *fp = fopen(filename, mode);
+
+        if (fp == NULL)
+        {
+            FILE *create_fp = fopen(filename, "wb");
+            if (create_fp == NULL)
+            {
+                perror("Failed to create file");
+                return NULL;
+            }
+            fclose(create_fp);
+
+            fp = fopen(filename, mode);
+        }
+
+        if (fp == NULL)
+        {
+            perror("Failed to open file after creation");
+        }
+
+        return fp;
+    }
+
+    // If mode is not "rb" or "r+b", fallback to regular fopen
+    return fopen(filename, mode);
+}
 // adding soon!
 /*
 ⚠️ Security (non-critical for learning, but important):
@@ -486,10 +530,17 @@ Passwords are stored as plain text.
 No limits on login attempts.
 
 No encryption — fine for now, but worth noting if you're aiming for real-world usability.
+*/
 
-⚠️ Account updates not visible instantly (logic flaw):
+/*
+SECURITY FIXING SOON!
+| Security Concern           | Safe in Your Code? | Fix Required? |
+| -------------------------- | ------------------ | ------------- |
+| Password Storage           | ❌ No               | ✅ Yes         |
+| File Tampering Protection  | ❌ No               | ✅ Yes         |
+| Input Size Handling        | ⚠️ Partially       | ✅ Yes         |
+| Password Change Validation | ❌ No               | ✅ Yes         |
+| Login Brute Force Defense  | ❌ No               | ✅ Yes         |
+| File Encryption            | ❌ No               | ✅ Optional    |
 
-If you deposit money and immediately check account, you may have to enter the account number again (since account number is needed during deposit, but not stored).
-
-If user has multiple accounts, you're only printing first matched account in view_account_details. This might hide the one just modified.
 */
