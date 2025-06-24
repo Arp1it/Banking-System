@@ -1,11 +1,23 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+// #include <unistd.h> // For POSIX systems
+
+#ifdef _WIN32
+    #include <conio.h> // For Windows
+#else
+    #include <termios.h> // For Linux/macOS
+#endif
+
 
 #define True 1
 #define False 0
 #define CREDENTIALS_LENGTH 30
 #define MAX_ACCOUNT_ONE_USER_HOLD 3
+
+#define RB "rb"
+#define R_PLUS_B "r+b"
+#define AB "ab"
 
 const char *ACCOUNT_FILE = "accounts.dat";
 const char *USER_FILE = "users.dat";
@@ -97,7 +109,7 @@ void sign_handler()
 {
     if (!loggedin)
     {
-        FILE *user_file = safe_file_mode_for_rb(USER_FILE, "rb");
+        FILE *user_file = safe_file_mode_for_rb(USER_FILE, RB);
         if (user_file == NULL)
         {
             return;
@@ -120,13 +132,15 @@ void sign_handler()
         }
         fclose(user_file);
 
-        user_file = fopen(USER_FILE, "ab");
+        user_file = fopen(USER_FILE, AB);
 
         strncpy(new_user.username, username, CREDENTIALS_LENGTH);
         strncpy(new_user.password, password, CREDENTIALS_LENGTH);
 
         fwrite(&new_user, sizeof(User), 1, user_file);
         fclose(user_file);
+
+        printf("\nSign in successful! You can now log in with your credentials.\n");
     }
     else
     {
@@ -138,7 +152,7 @@ void login_handler()
 {
     if (!loggedin)
     {
-        FILE *user_file = safe_file_mode_for_rb(USER_FILE, "rb");
+        FILE *user_file = safe_file_mode_for_rb(USER_FILE, RB);
         if (user_file == NULL)
         {
             return;
@@ -162,7 +176,7 @@ void login_handler()
             }
         }
 
-        printf("\nUser not found!\n");
+        printf("\n\nUser not found!\n");
         fclose(user_file);
     }
     else
@@ -190,8 +204,6 @@ void input_handler(char *username, char *password, char *typee)
     if (strcmp(typee, "login") != 0 && strcmp(typee, "signin") != 0)
     {
         printf("\nEnter new password: ");
-        fgets(password, CREDENTIALS_LENGTH, stdin);
-        fix_text_last(password);
     }
     else
     {
@@ -199,16 +211,66 @@ void input_handler(char *username, char *password, char *typee)
         fgets(username, CREDENTIALS_LENGTH, stdin);
         fix_text_last(username);
         printf("Enter password: ");
-        fgets(password, CREDENTIALS_LENGTH, stdin);
-        fix_text_last(password);
     }
+
+    #ifdef _WIN32
+        // Change terminal settings to disable echo for Windows
+        char ch;
+        int i = 0;
+
+        while ((ch = getch()) != '\r' && ch != EOF)
+        { // Use getch() to read without echo
+            if (ch == '\b' && i > 0)
+            {
+                i--;
+                printf("\b \b"); // Handle backspace
+            }
+
+            else
+            {
+                password[i++] = ch;
+                printf("*"); // Print asterisk for each character
+            }
+        }
+
+        password[i] = '\0'; // Null-terminate the password string
+
+    #else
+        // Change terminal settings to disable echo for linux/macOS
+        struct termios old_prop, new_prop;
+        tcgetattr(STDIN_FILENO, &old_prop);
+        new_prop = old_prop;
+        new_prop.c_lflag = ~(ECHO | ICANON); // Disable echo and canonical mode
+        tcsetattr(STDIN_FILENO, TCSANOW, &new_prop);
+
+        char ch;
+        int i = 0;
+        while ((ch = getchar()) != '\n' && ch != EOF)
+            ; // Clear any leftover input
+        {
+            if (ch == '\b' && i > 0)
+            {
+                i--;
+                printf("\b \b"); // Handle backspace
+            }
+            else if (ch != '\b')
+            {
+                password[i++] = ch;
+                printf("*");
+            }
+        }
+        password[i] = '\0'; // Null-terminate the password string
+
+        tcsetattr(STDIN_FILENO, TCSANOW, &old_prop); // Restore old terminal settings
+
+    #endif
 }
 
 void open_account()
 {
     if (loggedin)
     {
-        FILE *account_file = safe_file_mode_for_rb(ACCOUNT_FILE, "rb");
+        FILE *account_file = safe_file_mode_for_rb(ACCOUNT_FILE, RB);
 
         if (account_file == NULL)
         {
@@ -242,7 +304,7 @@ void open_account()
             return;
         }
 
-        account_file = fopen(ACCOUNT_FILE, "ab");
+        account_file = fopen(ACCOUNT_FILE, AB);
         if (account_file == NULL)
         {
             perror("Failed to open account file!");
@@ -265,7 +327,7 @@ void withdraw_handler()
 {
     if (loggedin)
     {
-        FILE *account_file = safe_file_mode_for_rb(ACCOUNT_FILE, "r+b");
+        FILE *account_file = safe_file_mode_for_rb(ACCOUNT_FILE, R_PLUS_B);
 
         if (account_file == NULL)
         {
@@ -314,7 +376,7 @@ void deposit_handler()
 {
     if (loggedin)
     {
-        FILE *account_file = safe_file_mode_for_rb(ACCOUNT_FILE, "r+b");
+        FILE *account_file = safe_file_mode_for_rb(ACCOUNT_FILE, R_PLUS_B);
 
         if (account_file == NULL)
         {
@@ -369,7 +431,7 @@ void change_password()
 {
     if (loggedin)
     {
-        FILE *change_pass = safe_file_mode_for_rb(USER_FILE, "r+b");
+        FILE *change_pass = safe_file_mode_for_rb(USER_FILE, R_PLUS_B);
 
         if (change_pass == NULL)
         {
@@ -423,7 +485,7 @@ void view_account_details()
 {
     if (loggedin)
     {
-        FILE *account_file = safe_file_mode_for_rb(ACCOUNT_FILE, "rb");
+        FILE *account_file = safe_file_mode_for_rb(ACCOUNT_FILE, RB);
 
         if (account_file == NULL)
         {
@@ -471,7 +533,7 @@ void fix_text_last(char *text)
 
 void How_many_account_user_holds(int *counter)
 {
-    FILE *account_file = safe_file_mode_for_rb(ACCOUNT_FILE, "rb");
+    FILE *account_file = safe_file_mode_for_rb(ACCOUNT_FILE, RB);
 
     if (account_file == NULL)
     {
@@ -493,7 +555,7 @@ void How_many_account_user_holds(int *counter)
 
 FILE *safe_file_mode_for_rb(const char *filename, const char *mode)
 {
-    if (strcmp(mode, "rb") == 0 || strcmp(mode, "r+b") == 0 || strcmp(mode, "rb+") == 0)
+    if (strcmp(mode, RB) == 0 || strcmp(mode, R_PLUS_B) == 0 || strcmp(mode, "rb+") == 0)
     {
         FILE *fp = fopen(filename, mode);
 
@@ -518,19 +580,9 @@ FILE *safe_file_mode_for_rb(const char *filename, const char *mode)
         return fp;
     }
 
-    // If mode is not "rb" or "r+b", fallback to regular fopen
+    // If mode is not RB or R_PLUS_B, fallback to regular fopen
     return fopen(filename, mode);
 }
-// adding soon!
-/*
-⚠️ Security (non-critical for learning, but important):
-
-Passwords are stored as plain text.
-
-No limits on login attempts.
-
-No encryption — fine for now, but worth noting if you're aiming for real-world usability.
-*/
 
 /*
 SECURITY FIXING SOON!
@@ -538,8 +590,6 @@ SECURITY FIXING SOON!
 | -------------------------- | ------------------ | ------------- |
 | Password Storage           | ❌ No               | ✅ Yes         |
 | File Tampering Protection  | ❌ No               | ✅ Yes         |
-| Input Size Handling        | ⚠️ Partially       | ✅ Yes         |
-| Password Change Validation | ❌ No               | ✅ Yes         |
 | Login Brute Force Defense  | ❌ No               | ✅ Yes         |
 | File Encryption            | ❌ No               | ✅ Optional    |
 
