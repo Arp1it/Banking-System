@@ -201,7 +201,11 @@ void logout_handler()
 
 void input_handler(char *username, char *password, char *typee)
 {
-    if (strcmp(typee, "login") != 0 && strcmp(typee, "signin") != 0)
+    if(strcmp(typee, "changepass-old") == 0)
+    {
+        printf("\nEnter old password: ");
+    }
+    else if (strcmp(typee, "login") != 0 && strcmp(typee, "signin") != 0)
     {
         printf("\nEnter new password: ");
     }
@@ -228,8 +232,11 @@ void input_handler(char *username, char *password, char *typee)
 
             else
             {
-                password[i++] = ch;
-                printf("*"); // Print asterisk for each character
+                if(ch != '\b') // Handle Enter key
+                {   
+                    password[i++] = ch;
+                    printf("*"); // Print asterisk for each character
+                }
             }
         }
 
@@ -443,13 +450,7 @@ void change_password()
 
         char old_password[CREDENTIALS_LENGTH];
 
-        printf("Enter old password first: ");
-
-        int c;
-        while ((c = getchar()) != '\n' && c != EOF); // flush stdin
-
-        fgets(old_password, CREDENTIALS_LENGTH, stdin);
-        fix_text_last(old_password);
+        input_handler(current_user, old_password, "changepass-old");
 
         while (fread(&user, sizeof(User), 1, change_pass))
         {
@@ -457,11 +458,17 @@ void change_password()
             {
                 if (strcmp(user.password, old_password) != 0)
                 {
-                    printf("Wrong Password!");
+                    printf("\nWrong Password!\n");
                     fclose(change_pass);
                     return;
                 }
                 input_handler(current_user, tpassword, "changepass");
+                while (strcmp(tpassword, user.password) == 0)
+                {
+                    printf("\nNew password cannot be the same as the old one. Please enter a different password: ");
+                    input_handler(current_user, tpassword, "changepass");
+                }
+                
                 fseek(change_pass, -sizeof(User), SEEK_CUR);
                 strncpy(user.password, tpassword, CREDENTIALS_LENGTH);
                 strncpy(user.username, current_user, CREDENTIALS_LENGTH);
